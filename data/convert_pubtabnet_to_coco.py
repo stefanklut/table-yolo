@@ -103,7 +103,7 @@ class PubTabNetToYOLO:
             images_path = self.output_dir.joinpath("images", split, filename)
             labels_path = self.output_dir.joinpath("labels", split, images_path.stem + ".txt")
 
-            copy_mode(path=images_input_path, destination=images_path, mode="link")
+            copy_mode(path=images_input_path, destination=images_path, mode="symlink")
 
             with open(labels_path, "w") as f:
                 for bbox in bbox_list:
