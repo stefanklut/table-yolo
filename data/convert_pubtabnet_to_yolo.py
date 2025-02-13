@@ -1,0 +1,279 @@
+import json
+import re
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Optional, TypedDict, override
+
+import imagesize
+import numpy as np
+import yaml
+from tqdm import tqdm
+
+sys.path.append(str(Path(__file__).resolve().parent.joinpath("..")))
+from utils.copy_utils import copy_mode
+
+
+class PubTabNetToYOLO:
+    def __init__(self, pubtabnet_jsonl_path, output_dir):
+        self.pubtabnet_jsonl_path = Path(pubtabnet_jsonl_path).absolute()
+        assert self.pubtabnet_jsonl_path.exists(), f"File not found: {self.pubtabnet_jsonl_path}"
+        assert self.pubtabnet_jsonl_path.suffix == ".jsonl", f"Invalid file format: {self.pubtabnet_jsonl_path}"
+
+        self.pubtabnet_dir = self.pubtabnet_jsonl_path.parent
+        assert self.pubtabnet_dir.joinpath("train").exists(), f"Directory not found: {self.pubtabnet_dir.joinpath('train')}"
+        assert self.pubtabnet_dir.joinpath("val").exists(), f"Directory not found: {self.pubtabnet_dir.joinpath('val')}"
+
+        self.output_dir = Path(output_dir)
+
+    def convert_single_line(self, line):
+        data = json.loads(line)
+        image_id = data["imgid"]
+        filename = data["filename"]
+        split = data["split"]
+
+        cells = data["html"]["cells"]
+
+        cell_i = 0
+        rows_i = 0
+        cols_i = 0
+        structure = iter(data["html"]["structure"]["tokens"])
+        CellEntry = TypedDict(
+            "CellEntry", {"bbox": Optional[list[int]], "text": Optional[list[str]], "columns": set[int], "rows": set[int]}
+        )
+        cell_data: list[CellEntry] = []
+
+        seen_cells = set()
+
+        cell_cols = None
+        cell_rows = None
+        for token in structure:
+            if token == "<td":
+                colspan_match = None
+                rowspan_match = None
+                while (next_token := next(structure)) != ">":
+                    colspan_match = re.match(r" colspan=\"(\d+)\"", next_token)
+                    rowspan_match = re.match(r" rowspan=\"(\d+)\"", next_token)
+                    if not (colspan_match or rowspan_match):
+                        raise ValueError(f"Invalid <td> tag: {next_token}")
+
+                if colspan_match:
+                    colspan = int(colspan_match.group(1))
+                else:
+                    colspan = 1
+
+                if rowspan_match:
+                    rowspan = int(rowspan_match.group(1))
+                else:
+                    rowspan = 1
+
+                cell_cols = set(range(cols_i, cols_i + colspan))
+                cell_rows = set(range(rows_i, rows_i + rowspan))
+
+                for row in cell_rows:
+                    for col in cell_cols:
+                        seen_cells.add((row, col))
+
+                cols_i += colspan
+
+            if token == "<td>":
+                while (rows_i, cols_i) in seen_cells:
+                    cols_i += 1
+                cell_cols = set([cols_i])
+                cell_rows = set([rows_i])
+
+                cols_i += 1
+
+            if token == "</td>":
+                if not cell_cols or not cell_rows:
+                    raise ValueError(f"Invalid cell: {cell_cols}, {cell_rows}")
+
+                cell = cells[cell_i]
+
+                bbox = cell.get("bbox", None)
+                if not (bbox is None or isinstance(bbox, list) and len(bbox) == 4):
+                    raise ValueError(f"Invalid bbox: {bbox}")
+                text = cell.get("tokens", None)
+                if not (text is None or isinstance(text, list) and all(isinstance(t, str) for t in text)):
+                    raise ValueError(f"Invalid text: {text}")
+
+                cell_entry = CellEntry(
+                    bbox=bbox,
+                    text=text,
+                    columns=cell_cols,
+                    rows=cell_rows,
+                )
+                cell_data.append(cell_entry)
+
+                cell_i += 1
+
+                cell_cols = None
+                cell_rows = None
+
+            if token == "</tr>":
+                rows_i += 1
+                cols_i = 0
+
+        return {"image_id": image_id, "filename": filename, "split": split, "cell_data": cell_data}
+
+    @staticmethod
+    def _bounding_box_center(bbox: list[int | float]) -> list[float]:
+        assert len(bbox) == 4, f"Invalid bounding box: {bbox}"
+
+        min_x = bbox[0]
+        min_y = bbox[1]
+        max_x = bbox[2]
+        max_y = bbox[3]
+
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        width = max_x - min_x
+        height = max_y - min_y
+
+        bbox_output = np.asarray([center_x, center_y, width, height]).astype(np.float32).tolist()
+        return bbox_output
+
+    @staticmethod
+    def _normalize_coords(bbox: list[int | float], size: tuple[int, int]) -> list[float]:
+        """
+        Normalize coordinates to a new size
+
+        Args:
+            coords (np.ndarray): the coordinates to normalize
+            size (tuple[int, int]): the size of the output image
+
+        Returns:
+            list[float]: the normalized coordinates
+        """
+        assert len(bbox) == 4, f"Invalid bounding box: {bbox}"
+        assert len(size) == 2, f"Invalid size: {size}"
+
+        height, width = size
+        min_x = bbox[0] / (width - 1)
+        min_y = bbox[1] / (height - 1)
+        max_x = bbox[2] / (width - 1)
+        max_y = bbox[3] / (height - 1)
+
+        return [min_x, min_y, max_x, max_y]
+
+    def read_jsonl(self):
+        with open(self.pubtabnet_jsonl_path, "r") as f:
+            for line in f:
+                yield self.convert_single_line(line)
+
+    def cell_data_to_bbox(self, cell_data, height, width):
+        bbox_output = []
+        for cell in cell_data:
+            bbox = cell["bbox"]
+            if bbox is None:
+                continue
+            bbox = self._normalize_coords(bbox, (height, width))
+            bbox_output.append(self._bounding_box_center(bbox))
+
+        return {"cell": bbox_output}
+
+    def cell_data_to_bbox_columns_and_rows(self, cell_data, height, width):
+        cell_bbox_output = []
+
+        row_coords = defaultdict(lambda: [np.inf, np.inf, -np.inf, -np.inf])
+        col_coords = defaultdict(lambda: [np.inf, np.inf, -np.inf, -np.inf])
+
+        for cell in cell_data:
+            bbox = cell["bbox"]
+            if bbox is None:
+                continue
+
+            rows = cell["rows"]
+            cols = cell["columns"]
+
+            min_x_cell = bbox[0]
+            min_y_cell = bbox[1]
+            max_x_cell = bbox[2]
+            max_y_cell = bbox[3]
+
+            if len(rows) == 1:
+                row = list(rows)[0]
+                row_coords[row] = [
+                    min(row_coords[row][0], min_x_cell),
+                    min(row_coords[row][1], min_y_cell),
+                    max(row_coords[row][2], max_x_cell),
+                    max(row_coords[row][3], max_y_cell),
+                ]
+
+            if len(cols) == 1:
+                col = list(cols)[0]
+                col_coords[col] = [
+                    min(col_coords[col][0], min_x_cell),
+                    min(col_coords[col][1], min_y_cell),
+                    max(col_coords[col][2], max_x_cell),
+                    max(col_coords[col][3], max_y_cell),
+                ]
+
+            if bbox is None:
+                continue
+            bbox = self._normalize_coords(bbox, (height, width))
+            cell_bbox_output.append(self._bounding_box_center(bbox))
+            cell_bbox_output.append(bbox)
+
+        row_bbox_output = [
+            self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in row_coords.values()
+        ]
+
+        col_bbox_output = [
+            self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in col_coords.values()
+        ]
+
+        return {"cell": cell_bbox_output, "row": row_bbox_output, "col": col_bbox_output}
+
+    def convert(self):
+        for data in self.read_jsonl():
+            filename = data["filename"]
+            split = data["split"]
+            cell_data = data["cell_data"]
+
+            self.output_dir.joinpath("images", split).mkdir(parents=True, exist_ok=True)
+            self.output_dir.joinpath("labels", split).mkdir(parents=True, exist_ok=True)
+
+            images_input_path = self.pubtabnet_dir.joinpath(split, filename)
+
+            # Get image size
+            width, height = imagesize.get(images_input_path)
+
+            # Write to YOLO format
+            images_path = self.output_dir.joinpath("images", split, filename)
+            labels_path = self.output_dir.joinpath("labels", split, images_path.stem + ".txt")
+
+            copy_mode(path=images_input_path, destination=images_path, mode="symlink")
+
+            with open(labels_path, "w") as f:
+                output = self.cell_data_to_bbox_columns_and_rows(cell_data, height, width)
+
+                for bbox_output in output["cell"]:
+                    bbox_output = " ".join(map(str, bbox_output))
+                    f.write(f"0 {bbox_output}\n")
+
+                for bbox_output in output["row"]:
+                    bbox_output = " ".join(map(str, bbox_output))
+                    f.write(f"1 {bbox_output}\n")
+
+                for bbox_output in output["col"]:
+                    bbox_output = " ".join(map(str, bbox_output))
+                    f.write(f"2 {bbox_output}\n")
+
+        info_yaml = {
+            "path": str(self.output_dir),
+            "train": "images/train",
+            "val": "images/val",
+            "names": ["table_cell", "table_row", "table_column"],
+        }
+
+        with open(self.output_dir.joinpath("yolo.yaml"), "w") as f:
+            yaml.dump(info_yaml, f)
+
+
+if __name__ == "__main__":
+    pubtabnet_jsonl_path = Path("/home/stefan/Documents/datasets/pubtabnet/PubTabNet_2.0.0.jsonl")
+    output_dir = Path("/tmp/pubtabnet_yolo")
+
+    converter = PubTabNetToYOLO(pubtabnet_jsonl_path=pubtabnet_jsonl_path, output_dir=output_dir)
+    converter.convert()
