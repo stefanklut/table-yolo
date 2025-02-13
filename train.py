@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
-from data.convert_pubtabnet_to_coco import PubTabNetToYOLO
+from data.convert_pubtabnet_to_yolo import PubTabNetToYOLO
 from utils.tempdir import OptionalTemporaryDirectory
 
 
