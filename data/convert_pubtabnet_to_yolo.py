@@ -1,7 +1,11 @@
 import json
+import logging
 import re
 import sys
 from collections import Counter, defaultdict
+
+# from multiprocessing.pool import ThreadPool
+from multiprocessing.pool import Pool
 from pathlib import Path
 from typing import Optional, TypedDict, override
 
@@ -12,6 +16,7 @@ from tqdm import tqdm
 
 sys.path.append(str(Path(__file__).resolve().parent.joinpath("..")))
 from utils.copy_utils import copy_mode
+from utils.logging_utils import get_logger_name
 
 
 class PubTabNetToYOLO:
@@ -25,8 +30,9 @@ class PubTabNetToYOLO:
         assert self.pubtabnet_dir.joinpath("val").exists(), f"Directory not found: {self.pubtabnet_dir.joinpath('val')}"
 
         self.output_dir = Path(output_dir)
+        self.logger = logging.getLogger(get_logger_name())
 
-    def convert_single_line(self, line):
+    def single_line_to_data(self, line):
         data = json.loads(line)
         image_id = data["imgid"]
         filename = data["filename"]
@@ -116,6 +122,43 @@ class PubTabNetToYOLO:
 
         return {"image_id": image_id, "filename": filename, "split": split, "cell_data": cell_data}
 
+    def convert_single_line(self, line):
+        data = self.single_line_to_data(line)
+
+        filename = data["filename"]
+        split = data["split"]
+        cell_data = data["cell_data"]
+
+        self.output_dir.joinpath("images", split).mkdir(parents=True, exist_ok=True)
+        self.output_dir.joinpath("labels", split).mkdir(parents=True, exist_ok=True)
+
+        images_input_path = self.pubtabnet_dir.joinpath(split, filename)
+
+        # Get image size
+        width, height = imagesize.get(images_input_path)
+
+        # Write to YOLO format
+        images_path = self.output_dir.joinpath("images", split, filename)
+        labels_path = self.output_dir.joinpath("labels", split, images_path.stem + ".txt")
+
+        copy_mode(path=images_input_path, destination=images_path, mode="symlink")
+
+        with open(labels_path, "w") as f:
+            output = self.cell_data_to_bbox_columns_and_rows(cell_data, height, width)
+            # output = self.cell_data_to_bbox(cell_data, height, width)
+
+            for bbox_output in output["cell"]:
+                bbox_output = " ".join(map(str, bbox_output))
+                f.write(f"0 {bbox_output}\n")
+
+            for bbox_output in output["row"]:
+                bbox_output = " ".join(map(str, bbox_output))
+                f.write(f"1 {bbox_output}\n")
+
+            for bbox_output in output["col"]:
+                bbox_output = " ".join(map(str, bbox_output))
+                f.write(f"2 {bbox_output}\n")
+
     @staticmethod
     def _bounding_box_center(bbox: list[int | float]) -> list[float]:
         assert len(bbox) == 4, f"Invalid bounding box: {bbox}"
@@ -149,24 +192,29 @@ class PubTabNetToYOLO:
         assert len(size) == 2, f"Invalid size: {size}"
 
         height, width = size
-        min_x = bbox[0] / (width - 1)
-        min_y = bbox[1] / (height - 1)
-        max_x = bbox[2] / (width - 1)
-        max_y = bbox[3] / (height - 1)
+        min_x = bbox[0] / width
+        min_y = bbox[1] / height
+        max_x = bbox[2] / width
+        max_y = bbox[3] / height
 
         return [min_x, min_y, max_x, max_y]
 
-    def read_jsonl(self):
+    def convert_jsonl(self):
         with open(self.pubtabnet_jsonl_path, "r") as f:
-            for line in f:
-                yield self.convert_single_line(line)
+            lines = f.readlines()
+        with Pool() as pool:
+            results = list(
+                tqdm(pool.imap_unordered(self.convert_single_line, lines), desc="Converting JSONL", total=len(lines))
+            )
 
     def cell_data_to_bbox(self, cell_data, height, width):
         bbox_output = []
         for cell in cell_data:
             bbox = cell["bbox"]
+
             if bbox is None:
                 continue
+
             bbox = self._normalize_coords(bbox, (height, width))
             bbox_output.append(self._bounding_box_center(bbox))
 
@@ -191,6 +239,19 @@ class PubTabNetToYOLO:
             max_x_cell = bbox[2]
             max_y_cell = bbox[3]
 
+            if min_x_cell < 0:
+                min_x_cell = 0
+                self.logger.warning(f"min_x_cell < 0: {bbox}")
+            if min_y_cell < 0:
+                min_y_cell = 0
+                self.logger.warning(f"min_y_cell < 0: {bbox}")
+            if max_x_cell > width:
+                max_x_cell = width
+                self.logger.warning(f"max_x_cell > width: {bbox}")
+            if max_y_cell > height:
+                max_y_cell = height
+                self.logger.warning(f"max_y_cell > height: {bbox}")
+
             if len(rows) == 1:
                 row = list(rows)[0]
                 row_coords[row] = [
@@ -209,11 +270,10 @@ class PubTabNetToYOLO:
                     max(col_coords[col][3], max_y_cell),
                 ]
 
-            if bbox is None:
-                continue
-            bbox = self._normalize_coords(bbox, (height, width))
-            cell_bbox_output.append(self._bounding_box_center(bbox))
-            cell_bbox_output.append(bbox)
+            cell_bbox = [min_x_cell, min_y_cell, max_x_cell, max_y_cell]
+
+            cell_bbox = self._normalize_coords(cell_bbox, (height, width))
+            cell_bbox_output.append(self._bounding_box_center(cell_bbox))
 
         row_bbox_output = [
             self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in row_coords.values()
@@ -226,39 +286,7 @@ class PubTabNetToYOLO:
         return {"cell": cell_bbox_output, "row": row_bbox_output, "col": col_bbox_output}
 
     def convert(self):
-        for data in self.read_jsonl():
-            filename = data["filename"]
-            split = data["split"]
-            cell_data = data["cell_data"]
-
-            self.output_dir.joinpath("images", split).mkdir(parents=True, exist_ok=True)
-            self.output_dir.joinpath("labels", split).mkdir(parents=True, exist_ok=True)
-
-            images_input_path = self.pubtabnet_dir.joinpath(split, filename)
-
-            # Get image size
-            width, height = imagesize.get(images_input_path)
-
-            # Write to YOLO format
-            images_path = self.output_dir.joinpath("images", split, filename)
-            labels_path = self.output_dir.joinpath("labels", split, images_path.stem + ".txt")
-
-            copy_mode(path=images_input_path, destination=images_path, mode="symlink")
-
-            with open(labels_path, "w") as f:
-                output = self.cell_data_to_bbox_columns_and_rows(cell_data, height, width)
-
-                for bbox_output in output["cell"]:
-                    bbox_output = " ".join(map(str, bbox_output))
-                    f.write(f"0 {bbox_output}\n")
-
-                for bbox_output in output["row"]:
-                    bbox_output = " ".join(map(str, bbox_output))
-                    f.write(f"1 {bbox_output}\n")
-
-                for bbox_output in output["col"]:
-                    bbox_output = " ".join(map(str, bbox_output))
-                    f.write(f"2 {bbox_output}\n")
+        self.convert_jsonl()
 
         info_yaml = {
             "path": str(self.output_dir),

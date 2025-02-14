@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 from termcolor import colored
 
-LOGGER_BASE_NAME: str = "laypa"
+LOGGER_BASE_NAME: str = "table-yolo"
 DEFAULT_LOG_BUFFER_SIZE: int = 1024 * 1024  # 1MB
 LOG_BUFFER_SIZE_KEY: str = "LOG_BUFFER_SIZE"
 
