@@ -20,14 +20,15 @@ from utils.logging_utils import get_logger_name
 
 
 class PubTabNetToYOLO:
-    def __init__(self, pubtabnet_jsonl_path, output_dir):
-        self.pubtabnet_jsonl_path = Path(pubtabnet_jsonl_path).absolute()
+    def __init__(self, pubtabnet_path, output_dir):
+        self.pubtabnet_path = Path(pubtabnet_path)
+
+        self.pubtabnet_jsonl_path = self.pubtabnet_path.joinpath("PubTabNet_2.0.0.jsonl")
         assert self.pubtabnet_jsonl_path.exists(), f"File not found: {self.pubtabnet_jsonl_path}"
         assert self.pubtabnet_jsonl_path.suffix == ".jsonl", f"Invalid file format: {self.pubtabnet_jsonl_path}"
 
-        self.pubtabnet_dir = self.pubtabnet_jsonl_path.parent
-        assert self.pubtabnet_dir.joinpath("train").exists(), f"Directory not found: {self.pubtabnet_dir.joinpath('train')}"
-        assert self.pubtabnet_dir.joinpath("val").exists(), f"Directory not found: {self.pubtabnet_dir.joinpath('val')}"
+        assert self.pubtabnet_path.joinpath("train").exists(), f"Directory not found: {self.pubtabnet_path.joinpath('train')}"
+        assert self.pubtabnet_path.joinpath("val").exists(), f"Directory not found: {self.pubtabnet_path.joinpath('val')}"
 
         self.output_dir = Path(output_dir)
         self.logger = logging.getLogger(get_logger_name())
@@ -132,7 +133,7 @@ class PubTabNetToYOLO:
         self.output_dir.joinpath("images", split).mkdir(parents=True, exist_ok=True)
         self.output_dir.joinpath("labels", split).mkdir(parents=True, exist_ok=True)
 
-        images_input_path = self.pubtabnet_dir.joinpath(split, filename)
+        images_input_path = self.pubtabnet_path.joinpath(split, filename)
 
         # Get image size
         width, height = imagesize.get(images_input_path)
@@ -204,7 +205,11 @@ class PubTabNetToYOLO:
             lines = f.readlines()
         with Pool() as pool:
             results = list(
-                tqdm(pool.imap_unordered(self.convert_single_line, lines), desc="Converting JSONL", total=len(lines))
+                tqdm(
+                    pool.imap_unordered(self.convert_single_line, lines),
+                    desc="Converting JSONL to YOLO",
+                    total=len(lines),
+                )
             )
 
     def cell_data_to_bbox(self, cell_data, height, width):
@@ -300,8 +305,8 @@ class PubTabNetToYOLO:
 
 
 if __name__ == "__main__":
-    pubtabnet_jsonl_path = Path("/home/stefan/Documents/datasets/pubtabnet/PubTabNet_2.0.0.jsonl")
+    pubtabneT_path = Path("/home/stefan/Documents/datasets/pubtabnet")
     output_dir = Path("/tmp/pubtabnet_yolo")
 
-    converter = PubTabNetToYOLO(pubtabnet_jsonl_path=pubtabnet_jsonl_path, output_dir=output_dir)
+    converter = PubTabNetToYOLO(pubtabnet_path=pubtabnet_path, output_dir=output_dir)
     converter.convert()
