@@ -143,7 +143,7 @@ class PubLayNetToYOLO:
 
         with open(labels_path, "w") as f:
             for annotation in data["annotations"]:
-                category_id = annotation["category_id"]
+                category_id = annotation["category_id"] - 1  # YOLO categories are 0-indexed
 
                 bbox = annotation["bbox"]
                 bbox_normalized = self._normalize_coords(bbox, (height, width))
