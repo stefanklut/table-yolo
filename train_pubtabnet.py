@@ -10,6 +10,7 @@ from utils.tempdir import OptionalTemporaryDirectory
 def get_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert PubTabNet to YOLO format")
     parser.add_argument("--pubtabnet_path", type=str, required=True, help="Path to PubTabNet JSONL file")
+    parser.add_argument("--yolo_base", type=str, default="yolo11n.pt", help="YOLO base model")
     parser.add_argument("-b", "--batch_size", type=int, default=16, help="Batch size")
     parser.add_argument("-d", "--device", type=str, default="0", help="Device")
     parser.add_argument("-w", "--workers", type=int, default=4, help="Number of workers")
@@ -25,7 +26,7 @@ def main(args: argparse.Namespace):
 
         yolo_data_path = Path(tmp_dir).joinpath("yolo.yaml")
 
-        model = YOLO("yolo11n.pt")
+        model = YOLO(args.yolo_base)
         model.train(
             data=str(yolo_data_path),
             epochs=args.epochs,
