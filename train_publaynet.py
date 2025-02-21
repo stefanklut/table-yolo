@@ -7,6 +7,15 @@ from data.convert_publaynet_to_yolo import PubLayNetToYOLO
 from utils.tempdir import OptionalTemporaryDirectory
 
 
+def bool_arg(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+
+
 def get_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert PubTabNet to YOLO format")
     parser.add_argument("--publaynet_path", type=str, required=True, help="Path to PubTabNet JSONL file")
@@ -16,6 +25,7 @@ def get_arguments() -> argparse.Namespace:
     parser.add_argument("-w", "--workers", type=int, default=4, help="Number of workers")
     parser.add_argument("-e", "--epochs", type=int, default=100, help="Number of epochs")
     parser.add_argument("-i", "--imgsz", type=int, default=640, help="Image size")
+    parser.add_argument("-a", "--amp", type=bool_arg, default=True, help="Automatic mixed precision")
     return parser.parse_args()
 
 
@@ -34,6 +44,7 @@ def main(args: argparse.Namespace):
             imgsz=args.imgsz,
             device=args.device,
             workers=args.workers,
+            amp=args.amp,
         )
 
 
