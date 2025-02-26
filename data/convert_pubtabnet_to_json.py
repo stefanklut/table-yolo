@@ -259,7 +259,7 @@ class PubTabNetToJSON:
 
         col_bbox_output = list(col_coords.values())
 
-        return {"cell": cell_bbox_output, "row": row_bbox_output, "col": col_bbox_output}
+        return {"cells": cell_bbox_output, "rows": row_bbox_output, "cols": col_bbox_output}
 
     def convert(self):
         self.convert_jsonl()

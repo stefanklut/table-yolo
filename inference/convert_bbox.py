@@ -10,20 +10,20 @@ from data.convert_pubtabnet_to_json import PubTabNetToJSON
 
 
 def convert_bboxes_to_cells(bboxes: dict):
-    rows = bboxes["row"]
-    cols = bboxes["col"]
-    cells = bboxes["cell"]
+    rows = bboxes["rows"]
+    cols = bboxes["cols"]
+    # cells = bboxes["cells"]
 
     sorted_rows = sorted(rows, key=lambda cell: cell[1])
     sorted_cols = sorted(cols, key=lambda cell: cell[0])
 
-    cells = {"cells": [], "rows": {}, "cols": {}}
+    table = {"cells": [], "rows": {}, "cols": {}}
 
     for i, row in enumerate(sorted_rows):
-        cells["rows"][i] = row
+        table["rows"][i] = row
         for j, col in enumerate(sorted_cols):
             if i == 0:
-                cells["cols"][j] = col
+                table["cols"][j] = col
             cell = {
                 "row": i,
                 "col": j,
@@ -36,9 +36,9 @@ def convert_bboxes_to_cells(bboxes: dict):
             }
             # Ensure the cell bbox is valid (i.e., x1 < x2 and y1 < y2)
             if cell["bbox"][0] < cell["bbox"][2] and cell["bbox"][1] < cell["bbox"][3]:
-                cells["cells"].append(cell)
+                table["cells"].append(cell)
 
-    return cells
+    return table
 
 
 if __name__ == "__main__":
