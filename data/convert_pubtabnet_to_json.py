@@ -19,7 +19,7 @@ from utils.copy_utils import copy_mode
 from utils.logging_utils import get_logger_name
 
 
-class PubTabNetToYOLO:
+class PubTabNetToJSON:
     def __init__(self, pubtabnet_path, output_dir):
         self.pubtabnet_path = Path(pubtabnet_path)
 
@@ -140,24 +140,14 @@ class PubTabNetToYOLO:
 
         # Write to YOLO format
         images_path = self.output_dir.joinpath("images", split, filename)
-        labels_path = self.output_dir.joinpath("labels", split, images_path.stem + ".txt")
+        json_path = self.output_dir.joinpath("labels", split, images_path.stem + ".json")
 
         copy_mode(path=images_input_path, destination=images_path, mode="symlink")
 
         output = self.cell_data_to_bbox_columns_and_rows(cell_data, height, width)
-        with open(labels_path, "w") as f:
 
-            for bbox_output in output["cell"]:
-                bbox_output = " ".join(map(str, bbox_output))
-                f.write(f"0 {bbox_output}\n")
-
-            for bbox_output in output["row"]:
-                bbox_output = " ".join(map(str, bbox_output))
-                f.write(f"1 {bbox_output}\n")
-
-            for bbox_output in output["col"]:
-                bbox_output = " ".join(map(str, bbox_output))
-                f.write(f"2 {bbox_output}\n")
+        with json_path.open("w") as f:
+            json.dump(output, f)
 
     @staticmethod
     def _bounding_box_center(bbox: list[int | float]) -> list[float]:
@@ -206,7 +196,7 @@ class PubTabNetToYOLO:
             results = list(
                 tqdm(
                     pool.imap_unordered(self.convert_single_line, lines),
-                    desc="Converting JSONL to YOLO",
+                    desc="Converting JSONL to JSON",
                     total=len(lines),
                 )
             )
@@ -263,18 +253,13 @@ class PubTabNetToYOLO:
 
             cell_bbox = [min_x_cell, min_y_cell, max_x_cell, max_y_cell]
 
-            cell_bbox = self._normalize_coords(cell_bbox, (height, width))
-            cell_bbox_output.append(self._bounding_box_center(cell_bbox))
+            cell_bbox_output.append(cell_bbox)
 
-        row_bbox_output = [
-            self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in row_coords.values()
-        ]
+        row_bbox_output = list(row_coords.values())
 
-        col_bbox_output = [
-            self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in col_coords.values()
-        ]
+        col_bbox_output = list(col_coords.values())
 
-        return {"cell": cell_bbox_output, "row": row_bbox_output, "col": col_bbox_output}
+        return {"cells": cell_bbox_output, "rows": row_bbox_output, "cols": col_bbox_output}
 
     def convert(self):
         self.convert_jsonl()
@@ -291,8 +276,8 @@ class PubTabNetToYOLO:
 
 
 if __name__ == "__main__":
-    pubtabneT_path = Path("/home/stefan/Documents/datasets/pubtabnet")
-    output_dir = Path("/tmp/pubtabnet_yolo")
+    pubtabnet_path = Path("/home/stefan/Documents/datasets/pubtabnet")
+    output_dir = Path("/tmp/pubtabnet_json")
 
-    converter = PubTabNetToYOLO(pubtabnet_path=pubtabnet_path, output_dir=output_dir)
+    converter = PubTabNetToJSON(pubtabnet_path=pubtabnet_path, output_dir=output_dir)
     converter.convert()
