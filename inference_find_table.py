@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Tuple, Type, Union
@@ -193,7 +194,23 @@ class SavePredictor(Predictor):
 
         outputs = self.__call__(image)
 
-        yolo_results = outputs[0]
+        yolo_output = outputs[0]
+
+        classes = yolo_output.names
+        bboxes = {name: [] for name in classes}
+
+        boxes = yolo_output.boxes
+        for i in range(boxes.shape[0]):
+            xyxy = boxes.xyxy[i]
+            xyxy = xyxy.cpu().numpy().round().astype(np.int32)
+
+            class_id = int(boxes.cls[i].cpu().numpy())
+            class_name = classes[class_id]
+
+            bboxes[class_name].append(xyxy)
+
+        with self.output_dir.joinpath(f"{input_path.stem}.json").open("w") as f:
+            json.dump(bboxes, f)
 
     def process(self):
         """

@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Tuple, Type, Union
@@ -215,7 +216,8 @@ class SavePredictor(Predictor):
 
         found_cells = convert_bboxes_to_cells(bboxes)
 
-        print(found_cells)
+        with self.output_dir.joinpath(f"{input_path.stem}.json").open("w") as f:
+            json.dump(found_cells, f)
 
     def process(self):
         """
