@@ -88,7 +88,7 @@ class PubLayNetToYOLO:
             results = list(
                 tqdm(
                     pool.imap_unordered(self.convert_single_image, data.values()),
-                    desc="Converting JSON to YOLO",
+                    desc=f"Converting {split} JSON to YOLO",
                     total=len(data),
                 )
             )
