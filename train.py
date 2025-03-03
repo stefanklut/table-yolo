@@ -10,6 +10,7 @@ from ultralytics.cfg import (
     DEFAULT_CFG_DICT,
 )
 
+from data.convert_publaynet_to_yolo import PubLayNetToYOLO
 from data.convert_pubtabnet_to_yolo import PubTabNetToYOLO
 from utils.tempdir import OptionalTemporaryDirectory
 
@@ -86,9 +87,9 @@ def get_arguments() -> argparse.Namespace:
     args = parser.parse_args()
 
     if args.pubtabnet_path is None and args.publaynet_path is None:
-        raise argparse.ArgumentError(args.pubtabnet_path, "Either --pubtabnet_path or --publaynet_path must be provided")
+        raise argparse.ArgumentError(None, "Either --pubtabnet_path or --publaynet_path must be provided")
     if args.pubtabnet_path is not None and args.publaynet_path is not None:
-        raise argparse.ArgumentError(args.pubtabnet_path, "Only one of --pubtabnet_path or --publaynet_path can be provided")
+        raise argparse.ArgumentError(None, "Only one of --pubtabnet_path or --publaynet_path can be provided")
     return args
 
 
@@ -98,9 +99,11 @@ def main(args: argparse.Namespace):
         if args.pubtabnet_path is not None:
             pubtabnet_to_yolo = PubTabNetToYOLO(args.pubtabnet_path, tmp_dir)
             pubtabnet_to_yolo.convert()
-        else:
-            publaynet_to_yolo = PubTabNetToYOLO(args.publaynet_path, tmp_dir)
+        elif args.publaynet_path is not None:
+            publaynet_to_yolo = PubLayNetToYOLO(args.publaynet_path, tmp_dir)
             publaynet_to_yolo.convert()
+        else:
+            raise ValueError("The training data path is not set")
 
         yolo_data_path = Path(tmp_dir).joinpath("yolo.yaml")
 
