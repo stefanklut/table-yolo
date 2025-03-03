@@ -7,6 +7,7 @@ from ultralytics.cfg import (
     CFG_FLOAT_KEYS,
     CFG_FRACTION_KEYS,
     CFG_INT_KEYS,
+    DEFAULT_CFG_DICT,
 )
 
 from data.convert_pubtabnet_to_yolo import PubTabNetToYOLO
@@ -51,9 +52,27 @@ def add_cfg_arguments(parser: argparse.ArgumentParser):
     for key in CFG_INT_KEYS:
         parser.add_argument(f"--{key}", type=int, help=f"Set {key} to an integer")
     for key in CFG_FLOAT_KEYS:
+        if key == "batch":
+            parser.add_argument(f"--{key}", type=int, help=f"Set {key} to an integer")
+            continue
         parser.add_argument(f"--{key}", type=float, help=f"Set {key} to a float")
     for key in CFG_FRACTION_KEYS:
         parser.add_argument(f"--{key}", type=fractional_arg, help=f"Set {key} to a fraction between 0 and 1")
+    for key, value in DEFAULT_CFG_DICT.items():
+        if key in CFG_BOOL_KEYS or key in CFG_INT_KEYS or key in CFG_FLOAT_KEYS or key in CFG_FRACTION_KEYS:
+            continue
+        if value is None:
+            parser.add_argument(f"--{key}", type=str, help=f"Set {key} to a string")
+        elif isinstance(value, bool):
+            parser.add_argument(f"--{key}", type=bool_arg, help=f"Set {key} to true/false")
+        elif isinstance(value, int):
+            parser.add_argument(f"--{key}", type=int, help=f"Set {key} to an integer")
+        elif isinstance(value, float):
+            parser.add_argument(f"--{key}", type=float, help=f"Set {key} to a float")
+        elif isinstance(value, str):
+            parser.add_argument(f"--{key}", type=str, help=f"Set {key} to a string")
+        else:
+            raise ValueError(f"Unsupported type for {key}: {type(value)}")
 
 
 def get_arguments() -> argparse.Namespace:
