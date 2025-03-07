@@ -20,7 +20,8 @@ from utils.logging_utils import get_logger_name
 
 
 class PubTabNetToYOLO:
-    def __init__(self, pubtabnet_path, output_dir):
+    def __init__(self, pubtabnet_path, output_dir, extend_bbox: bool = False):
+        self.extend_bbox = extend_bbox
         self.pubtabnet_path = Path(pubtabnet_path)
 
         self.pubtabnet_jsonl_path = self.pubtabnet_path.joinpath("PubTabNet_2.0.0.jsonl")
@@ -211,6 +212,22 @@ class PubTabNetToYOLO:
                 )
             )
 
+    def all_boxes_min_max_width(self, bboxes):
+        if not bboxes:
+            return bboxes
+        min_x = min([bbox[0] for bbox in bboxes])
+        max_x = max([bbox[2] for bbox in bboxes])
+        bboxes = [[min_x, bbox[1], max_x, bbox[3]] for bbox in bboxes]
+        return bboxes
+
+    def all_boxes_min_max_height(self, bboxes):
+        if not bboxes:
+            return bboxes
+        min_y = min([bbox[1] for bbox in bboxes])
+        max_y = max([bbox[3] for bbox in bboxes])
+        bboxes = [[bbox[0], min_y, bbox[2], max_y] for bbox in bboxes]
+        return bboxes
+
     def cell_data_to_bbox_columns_and_rows(self, cell_data, height, width):
         cell_bbox_output = []
 
@@ -266,13 +283,16 @@ class PubTabNetToYOLO:
             cell_bbox = self._normalize_coords(cell_bbox, (height, width))
             cell_bbox_output.append(self._bounding_box_center(cell_bbox))
 
-        row_bbox_output = [
-            self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in row_coords.values()
-        ]
+        if self.extend_bbox:
+            row_bbox = self.all_boxes_min_max_width(list(row_coords.values()))
+            col_bbox = self.all_boxes_min_max_height(list(col_coords.values()))
+        else:
+            row_bbox = row_coords.values()
+            col_bbox = col_coords.values()
 
-        col_bbox_output = [
-            self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in col_coords.values()
-        ]
+        row_bbox_output = [self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in row_bbox]
+
+        col_bbox_output = [self._bounding_box_center(self._normalize_coords(bbox, (height, width))) for bbox in col_bbox]
 
         return {"cell": cell_bbox_output, "row": row_bbox_output, "col": col_bbox_output}
 

@@ -81,6 +81,7 @@ def get_arguments() -> argparse.Namespace:
     parser.add_argument("--pubtabnet_path", type=str, help="Path to PubTabNet JSONL file")
     parser.add_argument("--publaynet_path", type=str, help="Path to PubTabNet JSONL file")
     parser.add_argument("--yolo_base", type=str, default="yolo11n.pt", help="YOLO base model")
+    parser.add_argument("--extend_bbox", type=bool_arg, default=False, help="Extend bounding boxes to the maximum size")
 
     add_cfg_arguments(parser)
 
@@ -97,7 +98,7 @@ def main(args: argparse.Namespace):
 
     with OptionalTemporaryDirectory() as tmp_dir:
         if args.pubtabnet_path is not None:
-            pubtabnet_to_yolo = PubTabNetToYOLO(args.pubtabnet_path, tmp_dir)
+            pubtabnet_to_yolo = PubTabNetToYOLO(args.pubtabnet_path, tmp_dir, args.extend_bbox)
             pubtabnet_to_yolo.convert()
         elif args.publaynet_path is not None:
             publaynet_to_yolo = PubLayNetToYOLO(args.publaynet_path, tmp_dir)
@@ -114,6 +115,7 @@ def main(args: argparse.Namespace):
         kwargs.pop("pubtabnet_path")
         kwargs.pop("publaynet_path")
         kwargs.pop("yolo_base")
+        kwargs.pop("extend_bbox")
 
         kwargs["data"] = str(yolo_data_path)
         kwargs = {k: v for k, v in kwargs.items() if v is not None}

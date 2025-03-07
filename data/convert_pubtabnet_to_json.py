@@ -20,7 +20,8 @@ from utils.logging_utils import get_logger_name
 
 
 class PubTabNetToJSON:
-    def __init__(self, pubtabnet_path, output_dir):
+    def __init__(self, pubtabnet_path, output_dir, extend_bbox=False):
+        self.extend_bbox = extend_bbox
         self.pubtabnet_path = Path(pubtabnet_path)
 
         self.pubtabnet_jsonl_path = self.pubtabnet_path.joinpath("PubTabNet_2.0.0.jsonl")
@@ -201,6 +202,22 @@ class PubTabNetToJSON:
                 )
             )
 
+    def all_boxes_min_max_width(self, bboxes):
+        if not bboxes:
+            return bboxes
+        min_x = min([bbox[0] for bbox in bboxes])
+        max_x = max([bbox[2] for bbox in bboxes])
+        bboxes = [[min_x, bbox[1], max_x, bbox[3]] for bbox in bboxes]
+        return bboxes
+
+    def all_boxes_min_max_height(self, bboxes):
+        if not bboxes:
+            return bboxes
+        min_y = min([bbox[1] for bbox in bboxes])
+        max_y = max([bbox[3] for bbox in bboxes])
+        bboxes = [[bbox[0], min_y, bbox[2], max_y] for bbox in bboxes]
+        return bboxes
+
     def cell_data_to_bbox_columns_and_rows(self, cell_data, height, width):
         cell_bbox_output = []
 
@@ -255,9 +272,12 @@ class PubTabNetToJSON:
 
             cell_bbox_output.append(cell_bbox)
 
-        row_bbox_output = list(row_coords.values())
-
-        col_bbox_output = list(col_coords.values())
+        if self.extend_bbox:
+            row_bbox_output = self.all_boxes_min_max_height(list(row_coords.values()))
+            col_bbox_output = self.all_boxes_min_max_width(list(col_coords.values()))
+        else:
+            row_bbox_output = list(row_coords.values())
+            col_bbox_output = list(col_coords.values())
 
         return {"cells": cell_bbox_output, "rows": row_bbox_output, "cols": col_bbox_output}
 
