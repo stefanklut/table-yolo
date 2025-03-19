@@ -4,6 +4,7 @@ import subprocess
 import sys
 
 import torch
+import torch.version
 
 
 def get_uuids():

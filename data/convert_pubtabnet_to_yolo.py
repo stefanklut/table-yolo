@@ -311,7 +311,7 @@ class PubTabNetToYOLO:
 
 
 if __name__ == "__main__":
-    pubtabneT_path = Path("/home/stefan/Documents/datasets/pubtabnet")
+    pubtabnet_path = Path("/home/stefan/Documents/datasets/pubtabnet")
     output_dir = Path("/tmp/pubtabnet_yolo")
 
     converter = PubTabNetToYOLO(pubtabnet_path=pubtabnet_path, output_dir=output_dir)
