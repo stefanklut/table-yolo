@@ -192,6 +192,8 @@ class SavePredictor(Predictor):
             self.logger.warning(f"Image at {input_path} has not loaded correctly, ignoring for now")
             return
 
+        height, width = image.shape[:2]
+
         outputs = self.__call__(image)
 
         yolo_output = outputs[0]
@@ -199,15 +201,31 @@ class SavePredictor(Predictor):
         classes = yolo_output.names
         bboxes = {name: [] for name in classes}
 
-        boxes = yolo_output.boxes
-        for i in range(boxes.shape[0]):
-            xyxy = boxes.xyxy[i]
-            xyxy = xyxy.cpu().numpy().round().astype(np.int32)
+        if yolo_output.masks is not None:
+            relative_contours = [yolo_output.masks.xyn[i].cpu().numpy() for i in range(yolo_output.masks.shape[0])]
+        else:
+            relative_bboxes = [yolo_output.boxes.xyxyn[i].cpu().numpy() for i in range(yolo_output.boxes.shape[0])]
+            relative_contours = [
+                np.array(
+                    [
+                        [relative_bbox[0], relative_bbox[1]],
+                        [relative_bbox[2], relative_bbox[1]],
+                        [relative_bbox[2], relative_bbox[3]],
+                        [relative_bbox[0], relative_bbox[3]],
+                    ]
+                )
+                for relative_bbox in relative_bboxes
+            ]
 
-            class_id = int(boxes.cls[i].cpu().numpy())
-            class_name = classes[class_id]
+        for i in range(len(relative_contours)):
+            absolute_contour = relative_contours[i] * np.asarray([width, height])
 
-            bboxes[class_name].append(xyxy)
+            class_id = int(yolo_output.boxes.cls[i].cpu().numpy())
+            confidence = yolo_output.boxes.conf[i].cpu().numpy()
+
+            region = yolo_output.names[class_id]
+
+            bboxes[region].append(absolute_contour)
 
         with self.output_dir.joinpath(f"{input_path.stem}.json").open("w") as f:
             json.dump(bboxes, f)

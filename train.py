@@ -1,4 +1,5 @@
 import argparse
+import logging
 from pathlib import Path
 
 from ultralytics import YOLO
@@ -12,7 +13,10 @@ from ultralytics.cfg import (
 
 from data.convert_publaynet_to_yolo import PubLayNetToYOLO
 from data.convert_pubtabnet_to_yolo import PubTabNetToYOLO
+from utils.logging_utils import get_logger_name
 from utils.tempdir import OptionalTemporaryDirectory
+
+logger = logging.getLogger(get_logger_name())
 
 
 def bool_arg(v):
@@ -80,7 +84,7 @@ def get_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert PubTabNet to YOLO format")
     parser.add_argument("--pubtabnet_path", type=str, help="Path to PubTabNet JSONL file")
     parser.add_argument("--publaynet_path", type=str, help="Path to PubTabNet JSONL file")
-    parser.add_argument("--yolo_base", type=str, default="yolo11n.pt", help="YOLO base model")
+    parser.add_argument("--yolo", type=str, default="yolo11n.pt", help="YOLO base model")
     parser.add_argument("--extend_bbox", type=bool_arg, default=False, help="Extend bounding boxes to the maximum size")
 
     add_cfg_arguments(parser)
@@ -96,25 +100,26 @@ def get_arguments() -> argparse.Namespace:
 
 def main(args: argparse.Namespace):
 
+    model = YOLO(args.yolo)
+    yolo_task = model.task
+
     with OptionalTemporaryDirectory() as tmp_dir:
         if args.pubtabnet_path is not None:
             pubtabnet_to_yolo = PubTabNetToYOLO(args.pubtabnet_path, tmp_dir, args.extend_bbox)
             pubtabnet_to_yolo.convert()
         elif args.publaynet_path is not None:
-            publaynet_to_yolo = PubLayNetToYOLO(args.publaynet_path, tmp_dir)
+            publaynet_to_yolo = PubLayNetToYOLO(args.publaynet_path, tmp_dir, yolo_task=yolo_task)
             publaynet_to_yolo.convert()
         else:
             raise ValueError("The training data path is not set")
 
         yolo_data_path = Path(tmp_dir).joinpath("yolo.yaml")
 
-        model = YOLO(args.yolo_base)
-
         kwargs = vars(args)
         # Remove non-YOLO arguments
         kwargs.pop("pubtabnet_path")
         kwargs.pop("publaynet_path")
-        kwargs.pop("yolo_base")
+        kwargs.pop("yolo")
         kwargs.pop("extend_bbox")
 
         kwargs["data"] = str(yolo_data_path)

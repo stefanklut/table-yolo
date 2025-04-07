@@ -102,6 +102,8 @@ def main(args) -> None:
     def create_pred_visualization(image_path):
         image, dpi = load_image(image_path)
 
+        height, width = image.shape[:2]
+
         output = model(image)
 
         yolo_output = output[0]
@@ -111,16 +113,36 @@ def main(args) -> None:
         distinct_colors = distinctipy.get_colors(len(names), rng=0)  # no rng should give the same colors
         distinct_colors = [tuple(int(channel * 255) for channel in color) for color in distinct_colors]
 
-        boxes = yolo_output.boxes
-        for i in range(boxes.shape[0]):
-            xyxy = boxes.xyxy[i]
-            xyxy = xyxy.cpu().numpy().round().astype(np.int32)
+        if yolo_output.masks is not None:
+            relative_contours = [yolo_output.masks.xyn[i].cpu().numpy() for i in range(yolo_output.masks.shape[0])]
+        else:
+            relative_bboxes = [yolo_output.boxes.xyxyn[i].cpu().numpy() for i in range(yolo_output.boxes.shape[0])]
+            relative_contours = [
+                np.array(
+                    [
+                        [relative_bbox[0], relative_bbox[1]],
+                        [relative_bbox[2], relative_bbox[1]],
+                        [relative_bbox[2], relative_bbox[3]],
+                        [relative_bbox[0], relative_bbox[3]],
+                    ]
+                )
+                for relative_bbox in relative_bboxes
+            ]
 
-            class_id = int(boxes.cls[i].cpu().numpy())
+        for i in range(len(relative_contours)):
+            absolute_contour = relative_contours[i] * np.asarray([width, height])
+
+            class_id = int(yolo_output.boxes.cls[i].cpu().numpy())
 
             color = distinct_colors[class_id]
 
-            cv2.rectangle(image, (xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]), color, 1)
+            cv2.polylines(
+                image,
+                [absolute_contour.astype(np.int32)],
+                isClosed=True,
+                color=color,
+                thickness=1,
+            )
 
         return image
 

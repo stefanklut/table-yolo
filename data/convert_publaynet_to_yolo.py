@@ -13,10 +13,17 @@ from utils.copy_utils import copy_mode
 
 
 class PubLayNetToYOLO:
-    def __init__(self, publaynet_path, output_dir):
+    def __init__(
+        self,
+        publaynet_path: Path,
+        output_dir: Path,
+        yolo_task: str = "detection",
+    ):
         self.publaynet_path = Path(publaynet_path)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        self.yolo_task = yolo_task
 
         self.name_to_id = {}
         self.id_to_name = {}
@@ -70,6 +77,7 @@ class PubLayNetToYOLO:
                 raise ValueError(f"Category id {annotation['category_id']} not found in id_to_name")
 
             bbox = annotation["bbox"]
+            segmentation = annotation["segmentation"]
             height = data[image_id]["height"]
             width = data[image_id]["width"]
 
@@ -94,16 +102,25 @@ class PubLayNetToYOLO:
             )
 
     @staticmethod
-    def _normalize_coords(bbox: list[int | float], size: tuple[int, int]) -> list[float]:
+    def _normalize_bbox(bbox: list[int | float], size: tuple[int, int]) -> list[float]:
         """
-        Normalize coordinates to a new size
+        Normalize a bounding box to relative coordinates based on the given image size.
 
         Args:
-            coords (np.ndarray): the coordinates to normalize in the format [x, y, w, h]
-            size (tuple[int, int]): the size of the output image
+            bbox (list[int | float]): The bounding box in the format [x, y, w, h],
+                                      where (x, y) is the top-left corner, and (w, h)
+                                      are the width and height of the box.
+            size (tuple[int, int]): The dimensions of the image as (height, width).
 
-        Returns:
-            list[float]: the normalized coordinates, with the format [center_x, center_y, width, height]
+            list[float]: The normalized bounding box in the format
+                         [center_x, center_y, width, height], where all values
+                         are relative to the image dimensions.
+
+        Raises:
+            AssertionError: If the input `bbox` does not have exactly 4 elements
+                            or `size` does not have exactly 2 elements.
+            ValueError: If the normalized bounding box coordinates fall outside
+                        the range [0, 1).
         """
         assert len(bbox) == 4, f"Invalid bounding box: {bbox}"
         assert len(size) == 2, f"Invalid size: {size}"
@@ -121,6 +138,29 @@ class PubLayNetToYOLO:
             raise ValueError(f"Bounding box {bbox} is out of image bounds for image size {size}")
 
         return [new_x, new_y, new_w, new_h]
+
+    @staticmethod
+    def normalize_coords(coords: list[int | float], size: tuple[int, int]) -> list[float]:
+        """
+        Normalize coordinates to relative values based on the given image size.
+
+        Args:
+            coords (list[int | float]): The coordinates in the format [x, y, w, h].
+            size (tuple[int, int]): The dimensions of the image as (height, width).
+
+        Returns:
+            list[float]: The normalized coordinates in the format [x, y, w, h],
+                         where all values are relative to the image dimensions.
+        """
+        assert len(coords) % 2 == 0, f"Invalid coordinates: {coords}"
+        assert len(size) == 2, f"Invalid size: {size}"
+
+        coords_array = np.array(coords).reshape(-1, 2)
+        height, width = size
+        coords_array[:, 0] /= width
+        coords_array[:, 1] /= height
+        coords_normalized = coords_array.flatten().tolist()
+        return coords_normalized
 
     def convert_single_image(self, data: dict):
         filename = data["file_name"]
@@ -145,10 +185,19 @@ class PubLayNetToYOLO:
             for annotation in data["annotations"]:
                 category_id = annotation["category_id"] - 1  # YOLO categories are 0-indexed
 
-                bbox = annotation["bbox"]
-                bbox_normalized = self._normalize_coords(bbox, (height, width))
+                if self.yolo_task == "segment":
+                    segmentation = annotation["segmentation"]
+                    coords = segmentation[0]
+                    coords_normalized = self.normalize_coords(coords, (height, width))
 
-                f.write(f"{category_id} {' '.join(map(str, bbox_normalized))}\n")
+                elif self.yolo_task == "detect":
+                    bbox = annotation["bbox"]
+                    bbox_normalized = self._normalize_bbox(bbox, (height, width))
+                    coords_normalized = bbox_normalized
+                else:
+                    raise ValueError(f"Invalid YOLO type: {self.yolo_task}")
+
+                f.write(f"{category_id} {' '.join(map(str, coords_normalized))}\n")
 
     def convert(self):
         val_path = self.publaynet_path.joinpath("val.json")
