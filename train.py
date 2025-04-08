@@ -102,6 +102,10 @@ def main(args: argparse.Namespace):
 
     model = YOLO(args.yolo)
     yolo_task = model.task
+    if not isinstance(yolo_task, str):
+        raise TypeError(f"Invalid YOLO task: {yolo_task}")
+
+    logger.info(f"Yolo task: {yolo_task}")
 
     with OptionalTemporaryDirectory() as tmp_dir:
         if args.pubtabnet_path is not None:

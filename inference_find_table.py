@@ -7,7 +7,10 @@ from typing import Callable, Dict, Optional, Sequence, Tuple, Type, Union
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.data._utils.collate import collate, default_collate_fn_map
+from torch.utils.data._utils.collate import collate  # type: ignore[import]
+from torch.utils.data._utils.collate import (
+    default_collate_fn_map,  # type: ignore[import]
+)
 from tqdm import tqdm
 from ultralytics import YOLO
 
