@@ -17,7 +17,7 @@ class PubLayNetToYOLO:
         self,
         publaynet_path: Path,
         output_dir: Path,
-        yolo_task: str = "detection",
+        yolo_task: str = "detect",
     ):
         self.publaynet_path = Path(publaynet_path)
         self.output_dir = Path(output_dir)
