@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Tuple, Type, Union
 
+import cv2
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -14,7 +15,6 @@ from torch.utils.data._utils.collate import (
 from tqdm import tqdm
 from ultralytics import YOLO
 
-from inference.convert_bbox import convert_bboxes_to_cells
 from utils.image_utils import load_image_array_from_path
 from utils.input_utils import SUPPORTED_IMAGE_FORMATS, get_file_paths
 from utils.logging_utils import get_logger_name
@@ -37,6 +37,15 @@ def get_arguments() -> argparse.Namespace:
         required=True,
     )
     io_args.add_argument("-o", "--output", help="Output folder", type=str, required=True)
+
+    image_args = parser.add_argument_group("Image")
+    image_args.add_argument(
+        "--scale",
+        help="Scale to resize the image to, format: height,width",
+        type=float,
+        nargs=2,
+        default=(1.0, 1.0),
+    )
 
     dataloader_args = parser.add_argument_group("Dataloader")
     dataloader_args.add_argument("--num_workers", help="Number of workers to use", type=int, default=4)
@@ -76,8 +85,9 @@ class Predictor:
 
 
 class LoadingDataset(Dataset):
-    def __init__(self, data):
+    def __init__(self, data, scale: tuple[float, float] = (1.0, 1.0)):
         self.data = data
+        self.scale = scale
 
     def __len__(self):
         return len(self.data)
@@ -85,11 +95,18 @@ class LoadingDataset(Dataset):
     def __getitem__(self, index):
         path = self.data[index]
 
-        # TODO Move resize and load to this part of the dataloader
         data = load_image_array_from_path(path)
         if data is None:
             return None, None, path
-        image = data["image"]
+        image: np.ndarray = data["image"]
+
+        height, width = image.shape[:2]
+
+        if self.scale != (1.0, 1.0):
+            new_height = int(height * self.scale[0])
+            new_width = int(width * self.scale[1])
+            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+
         dpi = data["dpi"]
         return image, dpi, path
 
@@ -119,6 +136,7 @@ class SavePredictor(Predictor):
         input_paths: str | Path | Sequence[str | Path],
         output_dir: str | Path,
         num_workers: int = 4,
+        scale: tuple[float, float] = (1.0, 1.0),
     ):
         """
         Extension on the predictor that actually saves the part on the prediction we current care about: the semantic segmentation as pageXML
@@ -144,6 +162,8 @@ class SavePredictor(Predictor):
             self.set_output_dir(output_dir)
 
         self.num_workers = num_workers
+
+        self.scale = scale
 
     def set_input_paths(
         self,
@@ -204,20 +224,43 @@ class SavePredictor(Predictor):
 
         bboxes = {k: [] for k in class_names.values()}
 
-        boxes = yolo_output.boxes
-        for i in range(boxes.shape[0]):
-            xyxy = boxes.xyxy[i]
-            xyxy = xyxy.cpu().numpy().round().astype(np.int32)
+        obb = yolo_output.obb
+        for i in range(obb.shape[0]):
+            xyxyxyxyn = obb.xyxyxyxyn[i].cpu().numpy().tolist()
 
-            class_id = int(boxes.cls[i].cpu().numpy())
+            class_id = int(obb.cls[i].cpu().numpy())
 
             class_name = class_names[class_id]
-            bboxes[class_name].append(xyxy)
+            bboxes[class_name].append(xyxyxyxyn)
 
-        found_cells = convert_bboxes_to_cells(bboxes)
+        for k, v in bboxes.items():
+            if len(v) > 1:
+                print(f"Found multiple boxes for {k} in {input_path}")
+            if len(v) == 0:
+                print(f"Found no boxes for {k} in {input_path}")
 
-        with self.output_dir.joinpath(f"{input_path.stem}.json").open("w") as f:
-            json.dump(found_cells, f)
+        polygon_col_ndpohkp = bboxes["col-ndpohkp"]
+        for polygon in polygon_col_ndpohkp:
+            height, width = image.shape[:2]
+            polygon = (np.array(polygon) * np.array([width, height])).astype(np.int32)
+            image = cv2.polylines(image, [polygon], isClosed=True, color=(0, 255, 0), thickness=2)
+
+        polygon_header_ndpohkp = bboxes["header-ndpohkp"]
+        for polygon in polygon_header_ndpohkp:
+            height, width = image.shape[:2]
+            polygon = (np.array(polygon) * np.array([width, height])).astype(np.int32)
+            image = cv2.polylines(image, [polygon], isClosed=True, color=(255, 0, 0), thickness=2)
+
+        # Save the image with the bounding boxes
+        output_image_path = self.output_dir.joinpath(input_path.stem).with_suffix(".png")
+        output_image_path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(output_image_path), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+
+        output_path = self.output_dir.joinpath(input_path.stem).with_suffix(".json")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with output_path.open("w") as f:
+            json.dump(bboxes, f)
 
     def process(self):
         """
@@ -232,7 +275,7 @@ class SavePredictor(Predictor):
         if self.output_dir is None:
             raise TypeError("Cannot run when the output_dir is None")
 
-        dataset = LoadingDataset(self.input_paths)
+        dataset = LoadingDataset(self.input_paths, self.scale)
         dataloader = DataLoader(
             dataset,
             shuffle=False,
@@ -251,6 +294,7 @@ def main(args: argparse.Namespace) -> None:
         input_paths=args.input,
         output_dir=args.output,
         num_workers=args.num_workers,
+        scale=args.scale,
     )
     predictor.process()
 

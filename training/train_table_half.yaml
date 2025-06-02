@@ -1,0 +1,34 @@
+# train_custom.yaml
+# 'mode' is required only for CLI usage
+mode: train
+data: /home/stefan/Documents/datasets/kadaster-overijsel-all-half/data.yaml
+model: yolo11n-obb.pt
+epochs: 500
+batch: 8
+imgsz: 1280
+
+# Augmentation parameters
+hsv_h: 0.03
+hsv_s: 0.5
+hsv_v: 0.4
+degrees: 5
+translate: 0.05
+scale: 0.01
+shear: 0.0
+perspective: 0.0
+flipud: 0.0
+fliplr: 0.0
+bgr: 0.0
+mosaic: 0.0
+close_mosaic: 250
+mixup: 0.0
+erasing: 0.0
+
+# Inference/Validation parameters
+max_det: 300
+augment: False
+conf: 0.25
+
+# NMS parameters
+iou: 0.5
+agnostic_nms: False
