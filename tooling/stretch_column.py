@@ -13,8 +13,12 @@ def stretch_column(
     col: np.ndarray,
     header: np.ndarray,
 ) -> np.ndarray:
+    if col.shape[0] == 0:
+        return None
     if header.shape[0] == 0:
         return col[0]
+    assert col.shape[1:] == (4, 2), f"Column shape is not (n, 4, 2), but {col.shape}"
+    assert header.shape[1:] == (4, 2), f"Header shape is not (n, 4, 2), but {header.shape}"
 
     if header.shape[0] > 1:
         # Pick the left-most header by the minimum average x-coordinate
@@ -24,9 +28,6 @@ def stretch_column(
 
     if header.shape != (4, 2):
         raise ValueError(f"Header shape is not (4, 2), but {header.shape}")
-
-    if col.shape[0] == 0:
-        return col[0]
 
     if col.shape[0] > 1:
         # Pick the left-most column by the minimum average x-coordinate

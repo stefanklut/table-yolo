@@ -137,27 +137,6 @@ def segment_length_inside_polygon(segment: np.ndarray, polygon: np.ndarray) -> f
 
 def line_length_inside_polygon(polyline: np.ndarray, polygon: np.ndarray) -> float:
     """
-    Calculate the length of the portion of a line that lies inside a polygon.
-
-    Args:
-        polyline (np.ndarray): The polyline defined by its points, shape (m, 2).
-        polygon (np.ndarray): The polygon defined by its vertices, shape (n, 2).
-
-    Returns:
-        float: The total length of the polyline inside the polygon.
-    """
-    assert polyline.shape[1] == 2, "Polyline must be defined by its vertices in 2D."
-    assert polygon.shape[1] == 2, "Polygon must be defined by its vertices in 2D."
-
-    total_length = 0.0
-    for i in range(len(polyline) - 1):
-        segment = np.array([polyline[i], polyline[i + 1]])
-        total_length += segment_length_inside_polygon(segment, polygon)
-    return total_length
-
-
-def line_length_inside_polygon2(polyline: np.ndarray, polygon: np.ndarray) -> float:
-    """
     Calculate the length of the portion of a polyline that lies inside a polygon.
 
     Args:
@@ -178,9 +157,28 @@ def line_length_inside_polygon2(polyline: np.ndarray, polygon: np.ndarray) -> fl
     elif intersection.geom_type == "LineString":
         return intersection.length
     elif intersection.geom_type == "MultiLineString":
-        return sum(part.length for part in intersection)
+        return sum(part.length for part in intersection.geoms)
     else:
         return 0.0
+
+
+def fraction_line_inside_polygon(polyline: np.ndarray, polygon: np.ndarray) -> float:
+    """
+    Calculate the percentage of a polyline that lies inside a polygon.
+
+    Args:
+        polyline (np.ndarray): The polyline defined by its points, shape (m, 2).
+        polygon (np.ndarray): The polygon defined by its vertices, shape (n, 2).
+
+    Returns:
+        float: The percentage of the polyline length that is inside the polygon.
+    """
+    polyline_length = shapely.LineString(polyline).length
+
+    if polyline_length == 0:
+        return 0.0
+    inside_length = line_length_inside_polygon(polyline, polygon)
+    return inside_length / polyline_length
 
 
 if __name__ == "__main__":
@@ -260,18 +258,15 @@ if __name__ == "__main__":
             + np.linalg.norm(polyline1[3] - polyline1[2])
         )
         assert np.isclose(line_length_inside_polygon(polyline1, polygon), expected_length1)
-        assert np.isclose(line_length_inside_polygon2(polyline1, polygon), expected_length1)
 
         # Polyline with 3 segments, partially inside
         polyline2 = np.array([[-1, 1], [1, 1], [2.5, 1], [3, 1]])
         # Only the segment from (0,1) to (2,1) is inside, length 2.0
         assert np.isclose(line_length_inside_polygon(polyline2, polygon), 2.0)
-        assert np.isclose(line_length_inside_polygon2(polyline2, polygon), 2.0)
 
         # Polyline with 3 segments, all outside
         polyline3 = np.array([[3, 3], [4, 4], [5, 5], [6, 6]])
         assert line_length_inside_polygon(polyline3, polygon) == 0.0
-        assert line_length_inside_polygon2(polyline3, polygon) == 0.0
 
     # Run tests
     test_line_intersection_points()
