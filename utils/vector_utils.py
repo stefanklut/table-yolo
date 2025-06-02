@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def line_intersection_point(line1: np.ndarray, line2: np.ndarray):
+def line_intersection_points(line1: np.ndarray, line2: np.ndarray):
     """
     Find the intersection point of two lines defined by two points each.
 
@@ -26,6 +26,34 @@ def line_intersection_point(line1: np.ndarray, line2: np.ndarray):
     py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
 
     return (px, py)
+
+
+def line_segment_intersection_points(segment1: np.ndarray, segment2: np.ndarray):
+    """
+    Find the intersection point of two line segments defined by two points each.
+
+    Args:
+        segment1 (np.ndarray): The first line segment defined by two points.
+        segment2 (np.ndarray): The second line segment defined by two points.
+
+    Returns:
+        np.ndarray: The intersection point (x, y) if it exists, otherwise None.
+    """
+    # Get the intersection point of the lines
+    intersection = line_intersection_points(segment1, segment2)
+    if intersection is None:
+        return None
+
+    # Check if the intersection point is within the bounds of both segments
+    if (
+        np.all(intersection >= np.min(segment1, axis=0))
+        and np.all(intersection <= np.max(segment1, axis=0))
+        and np.all(intersection >= np.min(segment2, axis=0))
+        and np.all(intersection <= np.max(segment2, axis=0))
+    ):
+        return intersection
+
+    return None
 
 
 def line_intersection_vector_point(vector1: np.ndarray, point1: np.ndarray, vector2: np.ndarray, point2: np.ndarray):
@@ -98,5 +126,5 @@ if __name__ == "__main__":
     line2_point = line2[0]
     line2_vector = line2[0] - line1[1]
 
-    print(line_intersection_point(line1, line2))
+    print(line_intersection_points(line1, line2))
     print(line_intersection_vector_point(line1_vector, line1_point, line2_vector, line2_point))
