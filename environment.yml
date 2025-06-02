@@ -24,3 +24,4 @@ dependencies:
   - termcolor
   - tensorboard
   - distinctipy
+  - shapely
