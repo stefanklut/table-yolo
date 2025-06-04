@@ -134,4 +134,4 @@ if __name__ == "__main__":
 
         output_path = output_base_path / f"{json_path.stem}_combined.json"
         combine_json_and_pagexml(json_path, pagexml_path, output_path)
-        print(f"Combined data saved to {output_path} {i}/{len(json_paths)}")
+        print(f"Combined data saved to {output_path} {i+1}/{len(json_paths)}")
