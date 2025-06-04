@@ -39,6 +39,9 @@ def pick_best_col(cols: np.ndarray) -> np.ndarray:
     """
     Pick the best column from a list of columns.
     """
+    if cols.shape[0] == 0:
+        return cols
+
     # TODO: Implement a better picking strategy
     assert cols.shape[1:] == (4, 2), f"Column shape is not (n, 4, 2), but {cols.shape}"
     assert cols.shape[0] >= 1, f"Column missing, got {cols.shape}"
@@ -54,6 +57,9 @@ def pick_best_header(headers: np.ndarray) -> np.ndarray:
     """
     Pick the best header from a list of headers.
     """
+    if headers.shape == (0,):
+        return headers
+
     # TODO: Implement a better picking strategy
     assert headers.shape[1:] == (4, 2), f"Header shape is not (n, 4, 2), but {headers.shape}"
     assert headers.shape[0] >= 1, f"Header missing, got {headers.shape}"
@@ -174,13 +180,15 @@ def stretch_col(
     col: np.ndarray,
     header: np.ndarray,
 ) -> Optional[np.ndarray]:
-    # TODO: pick_best_column_header(col, header)
+    col, header = pick_best_col_header(col, header)
+
+    stretch_to_header = True
 
     # Check if the order is bottom-left, bottom-right, top-right, top-left
-    if not is_ordered_bounding_box(col):
+    if col.shape == (0,) or not is_ordered_bounding_box(col):
         return None
-    if not is_ordered_bounding_box(header):
-        return None
+    if header.shape == (0,) or not is_ordered_bounding_box(header):
+        stretch_to_header = False
 
     col_top_left = col[3]
     col_bottom_left = col[0]
@@ -190,44 +198,44 @@ def stretch_col(
     col_left_vector = col_bottom_left - col_top_left
     col_right_vector = col_bottom_right - col_top_right
 
-    header_bottom_left = header[0]
-    header_bottom_right = header[1]
+    if stretch_to_header:
+        header_bottom_left = header[0]
+        header_bottom_right = header[1]
 
-    header_bottom_vector = header_bottom_right - header_bottom_left
+        header_bottom_vector = header_bottom_right - header_bottom_left
 
-    # Calculate the intersection points
-    intersection_left_col_bottom_header = line_line_intersection_vector_point(
-        col_left_vector,
-        col_top_left,
-        header_bottom_vector,
-        header_bottom_left,
-    )
-    intersection_right_col_bottom_header = line_line_intersection_vector_point(
-        col_right_vector,
-        col_top_right,
-        header_bottom_vector,
-        header_bottom_right,
-    )
+        # Calculate the intersection points
+        intersection_left_col_bottom_header = line_line_intersection_vector_point(
+            col_left_vector,
+            col_top_left,
+            header_bottom_vector,
+            header_bottom_left,
+        )
+        intersection_right_col_bottom_header = line_line_intersection_vector_point(
+            col_right_vector,
+            col_top_right,
+            header_bottom_vector,
+            header_bottom_right,
+        )
 
-    if intersection_left_col_bottom_header is None or intersection_right_col_bottom_header is None:
-        print(f"Warning: No intersection found between column and header, got \n{col} \n{header}")
-        return col
+        if intersection_left_col_bottom_header is None or intersection_right_col_bottom_header is None:
+            print(f"Warning: No intersection found between column and header, got \n{col} \n{header}")
+            return col
 
-    vector_to_intersection_left = intersection_left_col_bottom_header - col_top_left
-    vector_to_intersection_right = intersection_right_col_bottom_header - col_top_right
+        vector_to_intersection_left = intersection_left_col_bottom_header - col_top_left
+        vector_to_intersection_right = intersection_right_col_bottom_header - col_top_right
 
-    distance_left = np.linalg.norm(vector_to_intersection_left)
-    distance_right = np.linalg.norm(vector_to_intersection_right)
+        distance_left = np.linalg.norm(vector_to_intersection_left)
+        distance_right = np.linalg.norm(vector_to_intersection_right)
 
-    if distance_right < distance_left:
-        # Move both top points up by the distance to the header
-        # TODO Optimize by just setting it to the intersection point
-        col_top_left = col_top_left + vector_to_intersection_right
-        col_top_right = col_top_right + vector_to_intersection_right
-    else:
-        # Move both top points up by the distance to the header
-        col_top_left = col_top_left + vector_to_intersection_left
-        col_top_right = col_top_right + vector_to_intersection_left
+        if distance_right < distance_left:
+            # Move both top points up by the distance to the header
+            col_top_left = intersection_left_col_bottom_header
+            col_top_right = col_top_right + vector_to_intersection_right
+        else:
+            # Move both top points up by the distance to the header
+            col_top_left = col_top_left + vector_to_intersection_left
+            col_top_right = intersection_right_col_bottom_header
 
     image_bottom_left = np.array([0, 1])
     image_bottom_right = np.array([1, 1])
@@ -255,12 +263,12 @@ def stretch_col(
 
     if distance_right < distance_left:
         # Move both bottom points up by the distance to the image
-        col_bottom_left = col_bottom_left + vector_to_intersection_right
+        col_bottom_left = intersection_left_col_bottom_image
         col_bottom_right = col_bottom_right + vector_to_intersection_right
     else:
         # Move both bottom points up by the distance to the image
         col_bottom_left = col_bottom_left + vector_to_intersection_left
-        col_bottom_right = col_bottom_right + vector_to_intersection_left
+        col_bottom_right = intersection_right_col_bottom_image
 
     # Create the new column
     new_col = np.array([col_bottom_left, col_bottom_right, col_top_right, col_top_left])
@@ -286,7 +294,9 @@ def col_based_on_header(
     assert header.shape == (0,) or header.shape[1:] == (4, 2), f"Header shape is not (0,) or (4, 2), but {header.shape}"
 
     if col.shape[0] == 0:
-        # TODO pick_best_col_header(col, header)
+        col, header = pick_best_col_header(col, header)
+        if header.shape[0] == 0:
+            return None
 
         # Create a column based on the header
         col = header.copy()[None]

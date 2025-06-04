@@ -126,7 +126,7 @@ if __name__ == "__main__":
     output_base_path = Path("/home/stefan/Documents/data/kadaster_overijsel_combined")
     output_base_path.mkdir(parents=True, exist_ok=True)
 
-    for json_path in json_paths:
+    for i, json_path in enumerate(json_paths):
         pagexml_path = pagexml_dir_path / f"{json_path.stem}.xml"
         if not pagexml_path.exists():
             print(f"PageXML file not found for {json_path.stem}, skipping.")
@@ -134,4 +134,4 @@ if __name__ == "__main__":
 
         output_path = output_base_path / f"{json_path.stem}_combined.json"
         combine_json_and_pagexml(json_path, pagexml_path, output_path)
-        print(f"Combined data saved to {output_path}")
+        print(f"Combined data saved to {output_path} {i}/{len(json_paths)}")
