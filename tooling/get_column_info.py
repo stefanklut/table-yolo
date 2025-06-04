@@ -7,7 +7,7 @@ from natsort import natsorted
 
 sys.path.append(str(Path(__file__).resolve().parent.joinpath("..")))
 from page_xml.page_xml_editor import PageXMLEditor
-from tooling.stretch_column import stretch_column
+from tooling.stretch_column import col_based_on_header, stretch_col
 from utils.vector_utils import fraction_line_inside_polygon
 
 
@@ -78,13 +78,22 @@ def combine_json_and_pagexml(json_path: Path, pagexml_path: Path, output_path: P
     polygon_col_ndpohkp = json_data["col-ndpohkp"]
     polygon_header_ndpohkp = json_data["header-ndpohkp"]
 
-    col = stretch_column(
+    col = col_based_on_header(
         np.array(polygon_col_ndpohkp),
         np.array(polygon_header_ndpohkp),
     )
 
     if col is None:
-        print(f"Warning: No valid column found for {json_path.stem}, skipping.")
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "col-text-lines": [],
+                },
+                f,
+                ensure_ascii=False,
+                indent=4,
+            )
+        print(f"Empty output saved to {output_path}.")
         return
 
     image_size = page_xml.get_size()

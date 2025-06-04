@@ -2,7 +2,7 @@ import numpy as np
 import shapely
 
 
-def line_intersection_points(line1: np.ndarray, line2: np.ndarray):
+def line_line_intersection_points(line1: np.ndarray, line2: np.ndarray):
     """
     Find the intersection point of two lines defined by two points each.
 
@@ -32,7 +32,33 @@ def line_intersection_points(line1: np.ndarray, line2: np.ndarray):
     return (px, py)
 
 
-def line_segment_intersection_points(segment1: np.ndarray, segment2: np.ndarray):
+def line_segment_intersection_points(line: np.ndarray, segment: np.ndarray):
+    """
+    Find the intersection point of a line defined by two points and a line segment defined by two points.
+
+    Args:
+        line (np.ndarray): The line defined by two points.
+        segment (np.ndarray): The line segment defined by two points.
+
+    Returns:
+        np.ndarray: The intersection point (x, y) if it exists, otherwise None.
+    """
+    assert line.shape == (2, 2), "Line must be defined by two points."
+    assert segment.shape == (2, 2), "Segment must be defined by two points."
+
+    intersection_line_line = line_line_intersection_points(line, segment)
+    if intersection_line_line is None:
+        return None
+    # Check if the intersection point is within the segment bounds
+    x, y = intersection_line_line
+    x_min, x_max = min(segment[0][0], segment[1][0]), max(segment[0][0], segment[1][0])
+    y_min, y_max = min(segment[0][1], segment[1][1]), max(segment[0][1], segment[1][1])
+    if x_min <= x <= x_max and y_min <= y <= y_max:
+        return np.array([x, y])
+    return None
+
+
+def segment_segment_intersection_points(segment1: np.ndarray, segment2: np.ndarray):
     """
     Find the intersection point of two line segments defined by two points each using shapely.
 
@@ -57,7 +83,7 @@ def line_segment_intersection_points(segment1: np.ndarray, segment2: np.ndarray)
     return None
 
 
-def line_intersection_vector_point(vector1: np.ndarray, point1: np.ndarray, vector2: np.ndarray, point2: np.ndarray):
+def line_line_intersection_vector_point(vector1: np.ndarray, point1: np.ndarray, vector2: np.ndarray, point2: np.ndarray):
     """
     Find the intersection point of two lines defined by a vector and a point each.
     Args:
@@ -187,25 +213,25 @@ if __name__ == "__main__":
         # Intersecting lines
         line1 = np.array([[0, 0], [1, 1]])
         line2 = np.array([[0, 1], [1, 0]])
-        intersection = line_intersection_points(line1, line2)
+        intersection = line_line_intersection_points(line1, line2)
         assert np.allclose(intersection, (0.5, 0.5))
 
         # Parallel lines
         line3 = np.array([[0, 0], [1, 0]])
         line4 = np.array([[0, 1], [1, 1]])
-        assert line_intersection_points(line3, line4) is None
+        assert line_line_intersection_points(line3, line4) is None
 
     def test_line_segment_intersection_points():
         # Intersecting segments
         seg1 = np.array([[0, 0], [1, 1]])
         seg2 = np.array([[0, 1], [1, 0]])
-        intersection = line_segment_intersection_points(seg1, seg2)
+        intersection = segment_segment_intersection_points(seg1, seg2)
         assert np.allclose(intersection, [0.5, 0.5])
 
         # Non-intersecting segments
         seg3 = np.array([[0, 0], [1, 0]])
         seg4 = np.array([[0, 1], [1, 1]])
-        assert line_segment_intersection_points(seg3, seg4) is None
+        assert segment_segment_intersection_points(seg3, seg4) is None
 
     def test_line_intersection_vector_point():
         # Intersecting lines
@@ -213,7 +239,7 @@ if __name__ == "__main__":
         p1 = np.array([0, 0])
         v2 = np.array([1, -1])
         p2 = np.array([0, 1])
-        intersection = line_intersection_vector_point(v1, p1, v2, p2)
+        intersection = line_line_intersection_vector_point(v1, p1, v2, p2)
         assert np.allclose(intersection, [0.5, 0.5])
 
         # Parallel lines
@@ -221,7 +247,7 @@ if __name__ == "__main__":
         p3 = np.array([0, 0])
         v4 = np.array([1, 0])
         p4 = np.array([0, 1])
-        assert line_intersection_vector_point(v3, p3, v4, p4) is None
+        assert line_line_intersection_vector_point(v3, p3, v4, p4) is None
 
     def test_point_inside_polygon():
         polygon = np.array([[0, 0], [2, 0], [2, 2], [0, 2]])

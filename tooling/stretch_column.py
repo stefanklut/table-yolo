@@ -1,66 +1,186 @@
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from natsort import natsorted
 
 sys.path.append(str(Path(__file__).resolve().parent.joinpath("..")))
-from utils.vector_utils import line_intersection_vector_point
+from utils.vector_utils import (
+    line_line_intersection_vector_point,
+    line_segment_intersection_points,
+)
 
 
-def stretch_column(
+def order_bounding_box(points):
+    # Sort by y, then x
+    sorted_by_y = points[np.argsort(points[:, 1])]
+    top_two = sorted_by_y[:2]
+    bottom_two = sorted_by_y[2:]
+
+    top_left, top_right = top_two[np.argsort(top_two[:, 0])]
+    bottom_left, bottom_right = bottom_two[np.argsort(bottom_two[:, 0])]
+
+    return np.array([bottom_left, bottom_right, top_right, top_left])
+
+
+def is_ordered_bounding_box(points):
+    """
+    Check if the points are ordered as bottom-left, bottom-right, top-right, top-left.
+    """
+    if points.shape != (4, 2):
+        raise ValueError(f"Points shape is not (4, 2), but {points.shape}")
+    ordered_points = order_bounding_box(points)
+    return np.allclose(ordered_points, points)
+
+
+def pick_best_col(cols: np.ndarray) -> np.ndarray:
+    """
+    Pick the best column from a list of columns.
+    """
+    # TODO: Implement a better picking strategy
+    assert cols.shape[1:] == (4, 2), f"Column shape is not (n, 4, 2), but {cols.shape}"
+    assert cols.shape[0] >= 1, f"Column missing, got {cols.shape}"
+
+    if cols.shape[0] == 1:
+        return cols[0]
+    else:
+        # For now, just return the first column
+        return cols[0]
+
+
+def pick_best_header(headers: np.ndarray) -> np.ndarray:
+    """
+    Pick the best header from a list of headers.
+    """
+    # TODO: Implement a better picking strategy
+    assert headers.shape[1:] == (4, 2), f"Header shape is not (n, 4, 2), but {headers.shape}"
+    assert headers.shape[0] >= 1, f"Header missing, got {headers.shape}"
+
+    if headers.shape[0] == 1:
+        return headers[0]
+    else:
+        # For now, just return the first header
+        return headers[0]
+
+
+def is_header_above_col(col: np.ndarray, header: np.ndarray) -> bool:
+    assert col.shape == (4, 2), f"Column shape is not (4, 2), but {col.shape}"
+    assert header.shape == (4, 2), f"Header shape is not (4, 2), but {header.shape}"
+
+    col_top_left = col[3]
+    col_bottom_left = col[0]
+    col_top_right = col[2]
+    col_bottom_right = col[1]
+    header_bottom_left = header[0]
+    header_bottom_right = header[1]
+
+    center_top_col = (col_top_left + col_top_right) / 2
+    center_bottom_col = (col_bottom_left + col_bottom_right) / 2
+
+    col_points = np.array([center_top_col, center_bottom_col])
+    header_points = np.array([header_bottom_left, header_bottom_right])
+
+    intersection = line_segment_intersection_points(col_points, header_points)
+    if intersection is None:
+        return False
+
+    return True
+
+
+def pick_best_col_based_on_header(
     col: np.ndarray,
     header: np.ndarray,
 ) -> np.ndarray:
-    if col.shape[0] == 0:
-        return None
-    if header.shape[0] == 0:
-        return col[0]
     assert col.shape[1:] == (4, 2), f"Column shape is not (n, 4, 2), but {col.shape}"
-    assert header.shape[1:] == (4, 2), f"Header shape is not (n, 4, 2), but {header.shape}"
+    assert col.shape[0] >= 1, f"Column missing, got {col.shape}"
+    assert header.shape == (4, 2), f"Header shape is not (4, 2), but {header.shape}"
 
-    if header.shape[0] > 1:
-        # Pick the left-most header by the minimum average x-coordinate
-        header = header[np.argmin(header.mean(axis=1))]
-    if header.shape[0] == 1:
-        header = header[0]
+    header_above = []
 
-    if header.shape != (4, 2):
-        raise ValueError(f"Header shape is not (4, 2), but {header.shape}")
+    for col_i in col:
+        if is_header_above_col(col_i, header):
+            header_above.append(col_i)
 
-    if col.shape[0] > 1:
-        # Pick the left-most column by the minimum average x-coordinate
-        col = col[np.argmin(col.mean(axis=1))]
-    if col.shape[0] == 1:
-        col = col[0]
+    if len(header_above) == 1:
+        return header_above[0]
+    else:
+        return pick_best_col(col)
 
-    if col.shape != (4, 2):
-        raise ValueError(f"Column shape is not (4, 2), but {col.shape}")
+
+def pick_best_header_based_on_col(
+    header: np.ndarray,
+    col: np.ndarray,
+) -> np.ndarray:
+    assert header.shape[1:] == (4, 2), f"Header shape is not (4, 2), but {header.shape}"
+    assert header.shape[0] >= 1, f"Header missing, got {header.shape}"
+    assert col.shape == (4, 2), f"Column shape is not (4, 2), but {col.shape}"
+
+    header_above = []
+    for header_i in header:
+        if is_header_above_col(col, header_i):
+            header_above.append(header_i)
+    if len(header_above) == 1:
+        return header_above[0]
+    else:
+        return pick_best_header(header)
+
+
+def pick_best_col_header(col: np.ndarray, header: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Pick the best column and header from a list of columns and headers.
+    """
+    assert col.shape == (0,) or col.shape[1:] == (4, 2), f"Column shape is not (0,) or (4, 2), but {col.shape}"
+    assert header.shape == (0,) or header.shape[1:] == (4, 2), f"Header shape is not (0,) or (4, 2), but {header.shape}"
+
+    if col.shape[0] == 0:
+        best_col = col
+    elif col.shape[0] == 1:
+        best_col = col[0]
+
+    if header.shape[0] == 0:
+        best_header = header
+    elif header.shape[0] == 1:
+        best_header = header[0]
+
+    if col.shape[0] > 1 and header.shape[0] == 0:
+        # If there are multiple columns but no header, pick the best column solo
+        best_col = pick_best_col(col)
+
+    elif header.shape[0] > 1 and col.shape[0] == 0:
+        # If there are multiple headers but no column, pick the best header solo
+        best_header = pick_best_header(header)
+
+    elif col.shape[0] > 1 and header.shape[0] == 1:
+        best_col = pick_best_col_based_on_header(col, header[0])
+    elif header.shape[0] > 1 and col.shape[0] == 1:
+        best_header = pick_best_header_based_on_col(header, col[0])
+    else:
+        # If there are multiple columns and headers, pick the best column and header
+        best_col = pick_best_col(col)
+        best_header = pick_best_header(header)
+
+    assert best_col.shape == (0,) or best_col.shape == (4, 2), f"Best column shape is not (0,) or (4, 2), but {best_col.shape}"
+    assert best_header.shape == (0,) or best_header.shape == (
+        4,
+        2,
+    ), f"Best header shape is not (0,) or (4, 2), but {best_header.shape}"
+
+    return best_col, best_header
+
+
+def stretch_col(
+    col: np.ndarray,
+    header: np.ndarray,
+) -> Optional[np.ndarray]:
+    # TODO: pick_best_column_header(col, header)
 
     # Check if the order is bottom-left, bottom-right, top-right, top-left
-
-    def order_bounding_box(points):
-        # Sort by y, then x
-        sorted_by_y = points[np.argsort(points[:, 1])]
-        top_two = sorted_by_y[:2]
-        bottom_two = sorted_by_y[2:]
-
-        top_left, top_right = top_two[np.argsort(top_two[:, 0])]
-        bottom_left, bottom_right = bottom_two[np.argsort(bottom_two[:, 0])]
-
-        return np.array([bottom_left, bottom_right, top_right, top_left])
-
-    ordered_column = order_bounding_box(col)
-    if not np.allclose(ordered_column, col):
-        raise ValueError(
-            f"Column points are not in bottom-left, bottom-right, top-right, top-left order., got \n{col} \n{ordered_column}"
-        )
-    ordered_header = order_bounding_box(header)
-    if not np.allclose(ordered_header, header):
-        raise ValueError(
-            f"Header points are not in bottom-left, bottom-right, top-right, top-left order., got \n{header} \n{ordered_header}"
-        )
+    if not is_ordered_bounding_box(col):
+        return None
+    if not is_ordered_bounding_box(header):
+        return None
 
     col_top_left = col[3]
     col_bottom_left = col[0]
@@ -76,13 +196,13 @@ def stretch_column(
     header_bottom_vector = header_bottom_right - header_bottom_left
 
     # Calculate the intersection points
-    intersection_left_col_bottom_header = line_intersection_vector_point(
+    intersection_left_col_bottom_header = line_line_intersection_vector_point(
         col_left_vector,
         col_top_left,
         header_bottom_vector,
         header_bottom_left,
     )
-    intersection_right_col_bottom_header = line_intersection_vector_point(
+    intersection_right_col_bottom_header = line_line_intersection_vector_point(
         col_right_vector,
         col_top_right,
         header_bottom_vector,
@@ -114,13 +234,13 @@ def stretch_column(
     image_bottom_vector = image_bottom_right - image_bottom_left
 
     # Calculate the intersection points
-    intersection_left_col_bottom_image = line_intersection_vector_point(
+    intersection_left_col_bottom_image = line_line_intersection_vector_point(
         col_left_vector,
         col_bottom_left,
         image_bottom_vector,
         image_bottom_left,
     )
-    intersection_right_col_bottom_image = line_intersection_vector_point(
+    intersection_right_col_bottom_image = line_line_intersection_vector_point(
         col_right_vector,
         col_bottom_right,
         image_bottom_vector,
@@ -145,6 +265,35 @@ def stretch_column(
     # Create the new column
     new_col = np.array([col_bottom_left, col_bottom_right, col_top_right, col_top_left])
     return new_col
+
+
+def col_based_on_header(
+    col: np.ndarray,
+    header: np.ndarray,
+) -> Optional[np.ndarray]:
+    """
+    If there is no column, base the column on the header.
+
+    Args:
+        col (np.ndarray): The column points.
+        header (np.ndarray): The header points.
+    Returns:
+        np.ndarray: The column points based on the header.
+    """
+
+    # TODO pick_best_col_header(col, header)
+    assert col.shape == (0,) or col.shape[1:] == (4, 2), f"Column shape is not (0,) or (4, 2), but {col.shape}"
+    assert header.shape == (0,) or header.shape[1:] == (4, 2), f"Header shape is not (0,) or (4, 2), but {header.shape}"
+
+    if col.shape[0] == 0:
+        # TODO pick_best_col_header(col, header)
+
+        # Create a column based on the header
+        col = header.copy()[None]
+        header = header[None]
+        return stretch_col(col, header)
+
+    return stretch_col(col, header)
 
 
 if __name__ == "__main__":
@@ -181,8 +330,11 @@ if __name__ == "__main__":
         if old_col.shape != (4, 2):
             raise ValueError(f"Column shape is not (4, 2), but {old_col.shape}")
 
-        col = stretch_column(col, header)
+        col = stretch_col(col, header)
+        if col is None:
+            continue
 
+        # Visualize the column and header
         import cv2
 
         image_path = mapping[json_path.stem]
