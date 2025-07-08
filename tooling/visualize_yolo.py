@@ -34,17 +34,25 @@ def main(args):
     # Run batched inference on a list of images
     input_paths = get_file_paths(args.input, SUPPORTED_IMAGE_FORMATS)
 
-    results = model(input_paths)
+    output_dir = None
+    if args.output is not None:
+        output_dir = Path(args.output)
+        if args.save is not None:
+            output_dir.mkdir(parents=True, exist_ok=True)
 
     # Process results list
-    for result in results:
+    for path in input_paths:
+        result = model(path)[0]
         boxes = result.boxes  # Boxes object for bounding box outputs
         masks = result.masks  # Masks object for segmentation masks outputs
         keypoints = result.keypoints  # Keypoints object for pose outputs
         probs = result.probs  # Probs object for classification outputs
         obb = result.obb  # Oriented boxes object for OBB outputs
-        result.show()  # display to screen
-        # result.save(filename="result.jpg")  # save to disk
+        if output_dir is not None:
+            filepath = output_dir.joinpath(f"{Path(result.path).stem}_result.jpg")
+            result.save(filename=filepath)
+        else:
+            result.show()  # display to screen
 
 
 if __name__ == "__main__":
