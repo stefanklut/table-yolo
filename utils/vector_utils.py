@@ -1,8 +1,13 @@
+from typing import Optional
+
 import numpy as np
 import shapely
 
 
-def line_line_intersection_points(line1: np.ndarray, line2: np.ndarray):
+def line_line_intersection_points(
+    line1: np.ndarray,
+    line2: np.ndarray,
+) -> Optional[np.ndarray]:
     """
     Find the intersection point of two lines defined by two points each.
 
@@ -29,10 +34,13 @@ def line_line_intersection_points(line1: np.ndarray, line2: np.ndarray):
     px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom
     py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
 
-    return (px, py)
+    return np.array([px, py])
 
 
-def line_segment_intersection_points(line: np.ndarray, segment: np.ndarray):
+def line_segment_intersection_points(
+    line: np.ndarray,
+    segment: np.ndarray,
+) -> Optional[np.ndarray]:
     """
     Find the intersection point of a line defined by two points and a line segment defined by two points.
 
@@ -58,7 +66,10 @@ def line_segment_intersection_points(line: np.ndarray, segment: np.ndarray):
     return None
 
 
-def segment_segment_intersection_points(segment1: np.ndarray, segment2: np.ndarray):
+def segment_segment_intersection_points(
+    segment1: np.ndarray,
+    segment2: np.ndarray,
+) -> Optional[np.ndarray]:
     """
     Find the intersection point of two line segments defined by two points each using shapely.
 
@@ -78,12 +89,17 @@ def segment_segment_intersection_points(segment1: np.ndarray, segment2: np.ndarr
 
     if intersection.is_empty:
         return None
-    if intersection.geom_type == "Point":
+    if isinstance(intersection, shapely.Point):
         return np.array([intersection.x, intersection.y])
     return None
 
 
-def line_line_intersection_vector_point(vector1: np.ndarray, point1: np.ndarray, vector2: np.ndarray, point2: np.ndarray):
+def line_line_intersection_vector_point(
+    vector1: np.ndarray,
+    point1: np.ndarray,
+    vector2: np.ndarray,
+    point2: np.ndarray,
+) -> Optional[np.ndarray]:
     """
     Find the intersection point of two lines defined by a vector and a point each.
     Args:
@@ -153,10 +169,10 @@ def segment_length_inside_polygon(segment: np.ndarray, polygon: np.ndarray) -> f
 
     if intersection.is_empty:
         return 0.0
-    elif intersection.geom_type == "LineString":
+    elif isinstance(intersection, shapely.LineString):
         return intersection.length
-    elif intersection.geom_type == "MultiLineString":
-        return sum(part.length for part in intersection)
+    elif isinstance(intersection, shapely.MultiLineString):
+        return sum(part.length for part in intersection.geoms)
     else:
         return 0.0
 
@@ -180,9 +196,9 @@ def line_length_inside_polygon(polyline: np.ndarray, polygon: np.ndarray) -> flo
     intersection = line.intersection(poly)
     if intersection.is_empty:
         return 0.0
-    elif intersection.geom_type == "LineString":
+    elif isinstance(intersection, shapely.LineString):
         return intersection.length
-    elif intersection.geom_type == "MultiLineString":
+    elif isinstance(intersection, shapely.MultiLineString):
         return sum(part.length for part in intersection.geoms)
     else:
         return 0.0
@@ -214,6 +230,7 @@ if __name__ == "__main__":
         line1 = np.array([[0, 0], [1, 1]])
         line2 = np.array([[0, 1], [1, 0]])
         intersection = line_line_intersection_points(line1, line2)
+        assert intersection is not None, "Expected intersection point to be found"
         assert np.allclose(intersection, (0.5, 0.5))
 
         # Parallel lines
@@ -226,6 +243,7 @@ if __name__ == "__main__":
         seg1 = np.array([[0, 0], [1, 1]])
         seg2 = np.array([[0, 1], [1, 0]])
         intersection = segment_segment_intersection_points(seg1, seg2)
+        assert intersection is not None, "Expected intersection point to be found"
         assert np.allclose(intersection, [0.5, 0.5])
 
         # Non-intersecting segments
@@ -240,6 +258,7 @@ if __name__ == "__main__":
         v2 = np.array([1, -1])
         p2 = np.array([0, 1])
         intersection = line_line_intersection_vector_point(v1, p1, v2, p2)
+        assert intersection is not None, "Expected intersection point to be found"
         assert np.allclose(intersection, [0.5, 0.5])
 
         # Parallel lines
